@@ -23,7 +23,7 @@ include tchar.inc
 define LTYPE_INLINE
 include ltype.inc
 
-define __MAKE__        200
+define __MAKE__        201
 
 define LINEBREAKCH     0x5E ; '^'
 
@@ -114,38 +114,35 @@ errorlevel      int_t 0
 strstart proc string:string_t
 
     ldr rax,string
-    .repeat
 
+    .while ( byte ptr [rax] == ' ' || byte ptr [rax] == 9 )
         inc rax
-        .continue(0) .if byte ptr [rax-1] == ' '
-        .continue(0) .if byte ptr [rax-1] == 9
-    .until 1
-    dec rax
+    .endw
     ret
 
 strstart endp
+
 
 strspace proc string:string_t
 
     ldr rcx,string
 
     .repeat
-        .repeat
-            mov al,[rcx]
-            inc rcx
-            .if al == ' ' || al == 9
-                mov rax,rcx
-                dec rax
-                movzx ecx,byte ptr [rax]
-                .break(1)
-            .endif
-        .until !al
-        dec rcx
-        xor eax,eax
-    .until 1
+        mov al,[rcx]
+        inc rcx
+        .if ( al == ' ' || al == 9 )
+
+            lea rax,[rcx-1]
+            movzx ecx,byte ptr [rax]
+           .return
+        .endif
+    .until !al
+    dec rcx
+    xor eax,eax
     ret
 
 strspace endp
+
 
 strtrim proc string:string_t
 
@@ -153,7 +150,6 @@ strtrim proc string:string_t
 
         mov ecx,eax
         add rcx,string
-
         .repeat
 
             dec rcx
@@ -167,6 +163,7 @@ strtrim proc string:string_t
 
 strtrim endp
 
+
 strmove proc dst:string_t, src:string_t
 
     inc strlen(src)
@@ -174,6 +171,7 @@ strmove proc dst:string_t, src:string_t
     ret
 
 strmove endp
+
 
 memstri proc uses rsi rdi rbx s1:string_t, l1:int_t, s2:string_t, l2:int_t
 
@@ -241,6 +239,7 @@ memstri proc uses rsi rdi rbx s1:string_t, l1:int_t, s2:string_t, l2:int_t
 
 memstri endp
 
+
 strstri proc uses rbx dst:string_t, src:string_t
 
     mov ebx,strlen(dst)
@@ -248,6 +247,7 @@ strstri proc uses rbx dst:string_t, src:string_t
     ret
 
 strstri endp
+
 
 strxchg proc uses rsi rdi rbx dst:string_t, old:string_t, new:string_t
 
@@ -269,12 +269,13 @@ strxchg proc uses rsi rdi rbx dst:string_t, old:string_t, new:string_t
 
 strxchg endp
 
+
 strfcat proc uses rsi rdi buffer:string_t, path:string_t, file:string_t
 
     mov rdx,buffer
     mov rsi,path
     xor eax,eax
-    lea ecx,[eax-1]
+    mov ecx,-1
 
     .if rsi
         mov rdi,rsi
@@ -306,12 +307,16 @@ strfcat proc uses rsi rdi buffer:string_t, path:string_t, file:string_t
 
 strfcat endp
 
+
 strfn proc path:string_t
 
     ldr rcx,path
-    .for ( rax=rcx, dl=[rcx] : dl : rcx++, dl=[rcx] )
+    .for ( rax = rcx, dl = [rcx] : dl : rcx++, dl=[rcx] )
+
         .if ( dl == '\' || dl == '/' )
+
             .if ( byte ptr [rcx+1] )
+
                 lea rax,[rcx+1]
             .endif
         .endif
@@ -319,6 +324,7 @@ strfn proc path:string_t
     ret
 
 strfn endp
+
 
 strtoken proc string:string_t
 
@@ -329,32 +335,30 @@ strtoken proc string:string_t
         mov rcx,rax
         xor eax,eax
     .endif
-    .repeat
-        mov al,[rcx]
+    .while islspace([rcx])
         inc rcx
-    .until !islspace(eax)
+    .endw
+    mov curr_token,rcx
+    .if ( eax == 0 )
+        .return
+    .endif
+    .while 1
 
-    .repeat
-        dec rcx
-        mov curr_token,rcx
-        .break .if !al
+        .if islspace([rcx])
 
-        .repeat
-            .repeat
-                mov al,[rcx]
-                inc rcx
-                .break(1) .if !al
-            .until islspace(eax)
-            mov [rcx-1],ah
+            mov [rcx],ah
             inc rcx
-        .until 1
-        dec rcx
-        mov rax,curr_token
-        mov curr_token,rcx
-    .until 1
+           .break
+        .endif
+        .break .if !eax
+        inc rcx
+    .endw
+    mov rax,curr_token
+    mov curr_token,rcx
     ret
 
 strtoken endp
+
 
 strext proc uses rbx string:string_t
 
@@ -369,6 +373,7 @@ strext proc uses rbx string:string_t
 
 strext endp
 
+
 setfext proc path:string_t, ext:string_t
 
     .if strext(path)
@@ -378,6 +383,7 @@ setfext proc path:string_t, ext:string_t
     ret
 
 setfext endp
+
 
 strpath proc uses rbx string:string_t
 
@@ -391,18 +397,19 @@ strpath proc uses rbx string:string_t
 
 strpath endp
 
+
 filexist proc file:string_t
 
-    inc GetFileAttributesA(file)
-    .ifnz
-        dec eax             ; 1 = file
-        and eax,_A_SUBDIR   ; 2 = subdir
-        shr eax,4
-        inc eax
+    .ifd ( GetFileAttributes(file) == -1 )
+        .return( 0 )
     .endif
+    and eax,_A_SUBDIR   ; 1 = file
+    shr eax,4           ; 2 = subdir
+    inc eax
     ret
 
 filexist endp
+
 
 MAXCMDL equ 0x8000
 
@@ -477,6 +484,7 @@ system proc uses rdi rsi rbx string:LPSTR
 
 system endp
 
+
 expenviron proc uses rsi rdi string:string_t
 
     mov rsi,malloc(0x8000)
@@ -497,11 +505,13 @@ expenviron proc uses rsi rdi string:string_t
 
 expenviron endp
 
+
 ltoken proc uses rsi rdi string:string_t
 
+    ldr rcx,string
     mov rsi,token
-    .if string
-        mov rsi,string
+    .if rcx
+        mov rsi,rcx
     .endif
 
     mov rsi,strstart(rsi)
@@ -602,7 +612,7 @@ findsymbol proc uses rsi rdi rbx symbol:string_t
         mov cx,[rdi]
         or  dx,0x2020
         or  cx,0x2020
-        .continue(0) .if dx != cx
+       .continue( 0 ) .if dx != cx
     .until !_stricmp(rax, rdi)
 
     sub rsi,size_t
@@ -612,6 +622,7 @@ findsymbol proc uses rsi rdi rbx symbol:string_t
     ret
 
 findsymbol endp
+
 
 alloc_string proc uses rsi rdi value:string_t
 
@@ -623,6 +634,7 @@ alloc_string proc uses rsi rdi value:string_t
     ret
 
 alloc_string endp
+
 
 addsymbol proc uses rdi symbol:string_t, value:string_t
 
@@ -648,12 +660,11 @@ addsymbol proc uses rdi symbol:string_t, value:string_t
             mov [rdi],rax
             mov rax,value
             .return .if !rax
-
             .break .if !alloc_string(rax)
         .endif
 
         mov [rdi+MAXSYMBOLS*size_t],rax
-        .return
+       .return
     .until 1
 
     perror("To many symbols..")
@@ -805,6 +816,7 @@ gnumake proc string:string_t
 
 gnumake endp
 
+
 skipiftag proc uses rsi rdi
 
     lea rsi,line_buf
@@ -868,6 +880,7 @@ syntax_error proc syntax:string_t
     exit(1)
 
 syntax_error endp
+
 
 find_and_compare proc
 
@@ -1432,7 +1445,7 @@ addtarget proc uses rsi rdi rbx target:string_t
             mov rax,[rsi]
             add rsi,size_t
         .endw
-        mov p,rsi
+        mov rsi,p
 
         .break .if !rax
         mov [rbx].type,T_METHOD
@@ -1491,7 +1504,7 @@ build_object proc uses rsi rdi rbx object:string_t
     lea rsi,extensions
     .if strext(strcpy(rbx, object))
 
-        mov byte ptr [eax],0
+        mov byte ptr [rax],0
     .endif
 
     lea rbx,suffixes
